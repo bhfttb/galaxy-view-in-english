@@ -6,6 +6,8 @@ export interface FileRecord {
 	path: string;
 	basename: string;
 	size?: number; // 字节
+	owner?: string;
+	security?: string;
 }
 
 export type LinkTable = Record<string, Record<string, number>>;
@@ -50,6 +52,8 @@ export function buildGraph(
 			outDegree: 0,
 			fileSize: f.size ?? 0,
 			unresolved: false,
+			owner: f.owner,
+			security: f.security,
 		});
 	}
 

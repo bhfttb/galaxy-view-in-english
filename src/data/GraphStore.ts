@@ -68,11 +68,22 @@ export class GraphStore extends Component {
 
 	/** preservePositions=false 用于基准（全新确定性种子 → 完整冷布局） */
 	rebuild(preservePositions: boolean): void {
-		const files = this.app.vault.getMarkdownFiles().map((f) => ({
-			path: f.path,
-			basename: f.basename,
-			size: f.stat.size,
-		}));
+		const files = this.app.vault.getMarkdownFiles()
+		.filter((f) => {
+			const cache = this.app.metadataCache.getFileCache(f);
+			return cache?.frontmatter?.type === "star";
+		})
+		.map((f) => {
+			const cache = this.app.metadataCache.getFileCache(f);
+			
+			return {
+				path: f.path,
+				basename: f.basename,
+				size: f.stat.size,
+				owner: cache?.frontmatter?.owner,
+				security: cache?.frontmatter?.security,
+			};
+		});
 		const next = buildGraph(files, this.app.metadataCache.resolvedLinks, this.app.metadataCache.unresolvedLinks, {
 			includeUnresolved: this.includeUnresolved,
 			includeOrphans: this.includeOrphans,

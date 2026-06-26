@@ -7,6 +7,8 @@ export interface GraphNode {
 	outDegree: number;
 	fileSize: number; // 字节；未解析为 0（「质量」可选依据）
 	unresolved: boolean;
+	owner?: string;
+	security?: string;
 }
 
 /** 边用节点数组下标表示——聚合渲染按索引 gather 坐标 */

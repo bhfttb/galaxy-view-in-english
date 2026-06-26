@@ -9,7 +9,17 @@ export type NodeColorFn = (node: GraphNode) => Color;
  * 用户的 2D 图谱配色 → 节点调色函数。
  * 语义对齐自带图谱：path: 前缀匹配、自上而下首个命中生效；无命中走 hash 回退调色板。
  */
+
+	const OWNER_COLORS: Record<string, Color> = {
+	Republic: new Color("#D4AF37"),
+	Corporation: new Color("#880808"),
+	Brood: new Color("#E75480"),
+	Index: new Color("#008080"),
+	Uncontrolled: new Color("#FFFFFF"),
+	};
+
 export function makeNodeColorFn(groups: ColorGroup[]): NodeColorFn {
+
 	const parsed = groups.map((g) => ({
 		prefix: g.query.startsWith('path:') ? g.query.slice(5).trim() : null,
 		raw: g.query,
@@ -17,12 +27,17 @@ export function makeNodeColorFn(groups: ColorGroup[]): NodeColorFn {
 	}));
 	return (node) => {
 		if (node.unresolved) return UNRESOLVED;
+
+		const owner = typeof node.owner === "string" ? node.owner.trim() : undefined;
+		const ownerColor = owner ? OWNER_COLORS[owner] : undefined;
+		if (ownerColor) return ownerColor;
+
 		for (const g of parsed) {
 			if (g.prefix !== null ? node.id.startsWith(g.prefix) : node.id.includes(g.raw)) return g.color;
 		}
 		return folderColor(node.folderTop, false);
 	};
-}
+};
 
 export const fallbackColorFn: NodeColorFn = (node) => folderColor(node.folderTop, node.unresolved);
 
