@@ -17,7 +17,7 @@ export interface VisualTokens {
 export const DEEP_SPACE: VisualTokens = {
 	id: 'deep-space',
 	background: 0x000003,
-	starfield: true,
+	starfield: false,
 	motes: false,
 	bloomEnabled: true,
 	lightMode: false,

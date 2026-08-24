@@ -11,10 +11,11 @@ export type NodeColorFn = (node: GraphNode) => Color;
  */
 
 	const OWNER_COLORS: Record<string, Color> = {
-	Republic: new Color("#D4AF37"),
-	Corporation: new Color("#880808"),
-	Brood: new Color("#E75480"),
-	Index: new Color("#008080"),
+	Republic: new Color("#ffd61f"),
+	Corporation: new Color("#740000"),
+	Brood: new Color("#377a00"),
+	Index: new Color("#03c4dd"),
+	Bones: new Color("#790a83"),
 	Uncontrolled: new Color("#FFFFFF"),
 	};
 

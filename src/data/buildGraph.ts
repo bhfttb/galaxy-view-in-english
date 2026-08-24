@@ -1,5 +1,5 @@
 import type { GraphData, GraphLink, GraphNode } from '../types';
-
+import { findShortestPath } from './findShortestPath';
 
 /** 输入用纯记录，不依赖 obsidian —— 可单测（设计要求） */
 export interface FileRecord {
@@ -8,6 +8,8 @@ export interface FileRecord {
 	size?: number; // 字节
 	owner?: string;
 	security?: string;
+	fleets?: string[];
+	links?: Record<string, number>;
 }
 
 export type LinkTable = Record<string, Record<string, number>>;
@@ -40,9 +42,11 @@ export function buildGraph(
 ): GraphData {
 	const nodes: GraphNode[] = [];
 	const indexById = new Map<string, number>();
+	const fileByPath = new Map<string, FileRecord>();
 
 	for (const f of files) {
 		indexById.set(f.path, nodes.length);
+		fileByPath.set(f.path, f);
 		nodes.push({
 			id: f.path,
 			name: f.basename,
@@ -54,12 +58,13 @@ export function buildGraph(
 			unresolved: false,
 			owner: f.owner,
 			security: f.security,
+			fleets: f.fleets,
 		});
 	}
 
 	const links: GraphLink[] = [];
-	const addLink = (si: number, ti: number) => {
-		links.push({ source: si, target: ti });
+	const addLink = (si: number, ti: number, distance = 1) => {
+		links.push({ source: si, target: ti, distance });
 		const s = nodes[si];
 		const t = nodes[ti];
 		if (s) {
@@ -75,11 +80,29 @@ export function buildGraph(
 	for (const src of Object.keys(resolvedLinks)) {
 		const si = indexById.get(src);
 		if (si === undefined) continue;
+
+		const s = nodes[si];
+		if (!s) continue;
 		const targets = resolvedLinks[src] ?? {};
+
 		for (const dst of Object.keys(targets)) {
 			const ti = indexById.get(dst);
 			if (ti === undefined) continue;
-			addLink(si, ti);
+
+			const sourceFile = fileByPath.get(src);
+			const targetFile = fileByPath.get(dst);
+
+			const sourceName = nodes[si]?.name ?? "";
+			const targetName = nodes[ti]?.name ?? "";
+
+			const distance =
+				sourceFile?.links?.[dst] ??
+				sourceFile?.links?.[targetName] ??
+				targetFile?.links?.[src] ??
+				targetFile?.links?.[sourceName] ??
+				1;
+
+			addLink(si, ti, distance);
 		}
 	}
 
@@ -133,6 +156,21 @@ export function buildGraph(
 				.map(([, l]) => l),
 		};
 	}
+
+console.log(
+	'[GalaxyView] Node IDs:',
+	result.nodes.map((n) => n.id)
+);
+
+console.log(
+	'[GalaxyView] Links:',
+	result.links.map((l) => ({
+		from: result.nodes[l.source]?.name,
+		to: result.nodes[l.target]?.name,
+		distance: l.distance,
+	}))
+);
+
 	return result;
 }
 
@@ -149,7 +187,7 @@ function filterNodes(g: GraphData, keep: (n: GraphNode, i: number) => boolean): 
 	for (const l of g.links) {
 		const s2 = remap.get(l.source);
 		const t2 = remap.get(l.target);
-		if (s2 !== undefined && t2 !== undefined) links.push({ source: s2, target: t2 });
+		if (s2 !== undefined && t2 !== undefined) links.push({ source: s2, target: t2, distance: l.distance });
 	}
 	return { nodes: kept, links };
 }

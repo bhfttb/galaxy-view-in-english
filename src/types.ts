@@ -9,12 +9,15 @@ export interface GraphNode {
 	unresolved: boolean;
 	owner?: string;
 	security?: string;
+	fleets?: string[];
+	links?: Record<string, number>;
 }
 
 /** 边用节点数组下标表示——聚合渲染按索引 gather 坐标 */
 export interface GraphLink {
 	source: number;
 	target: number;
+	distance: number;
 }
 
 export interface GraphData {

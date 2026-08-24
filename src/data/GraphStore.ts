@@ -3,6 +3,7 @@ import { Component, debounce } from 'obsidian';
 import type { GraphData } from '../types';
 import { buildGraph } from './buildGraph';
 import { seedPosition, seedRadius } from './seed';
+import { normalize } from 'path';
 
 /**
  * 唯一读 metadataCache 的模块。
@@ -32,6 +33,7 @@ export class GraphStore extends Component {
 		const rebuildSoon = debounce(() => this.rebuild(true), 800, true);
 		this.registerEvent(this.app.metadataCache.on('resolved', rebuildSoon));
 		this.registerEvent(this.app.vault.on('rename', rebuildSoon));
+		this.registerEvent(this.app.vault.on('modify', rebuildSoon));
 		this.registerEvent(this.app.vault.on('delete', rebuildSoon));
 	}
 
@@ -66,7 +68,8 @@ export class GraphStore extends Component {
 		this.rebuild(true);
 	}
 
-	/** preservePositions=false 用于基准（全新确定性种子 → 完整冷布局） */
+	
+	preservePositions = true
 	rebuild(preservePositions: boolean): void {
 		const files = this.app.vault.getMarkdownFiles()
 		.filter((f) => {
@@ -82,6 +85,8 @@ export class GraphStore extends Component {
 				size: f.stat.size,
 				owner: cache?.frontmatter?.owner,
 				security: cache?.frontmatter?.security,
+				fleets: normalizeStringList(cache?.frontmatter?.fleets),
+				links: normalizeLinks(cache?.frontmatter?.links),
 			};
 		});
 		const next = buildGraph(files, this.app.metadataCache.resolvedLinks, this.app.metadataCache.unresolvedLinks, {
@@ -115,6 +120,62 @@ export class GraphStore extends Component {
 
 		this.data = next;
 		this.positions = positions;
+
+		this.checkReciprocalLinks();
+
 		this.onChanged?.();
 	}
+	private checkReciprocalLinks(): void {
+	const prefix = 'zGalaxy View Star Pages/Republic Territory/';
+
+	const resolvedLinks = this.app.metadataCache.resolvedLinks;
+
+	for (const [sourcePath, targets] of Object.entries(resolvedLinks)) {
+		if (!sourcePath.startsWith(prefix)) continue;
+
+		for (const targetPath of Object.keys(targets)) {
+			if (!targetPath.startsWith(prefix)) continue;
+
+			const reverseTargets = resolvedLinks[targetPath];
+
+			if (!reverseTargets || !(sourcePath in reverseTargets)) {
+				console.warn(
+					`[GalaxyView] Missing reciprocal link. Add ${sourcePath} -> ${targetPath}`
+				);
+			}
+		}
+	}
+	}
+}
+
+function normalizeStringList(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.filter((x): x is string => typeof x === 'string')
+			
+			.filter(Boolean);
+	}
+
+	if (typeof value === 'string') {
+		return value
+			.split(',')
+			.map((x) => x.trim())
+			.filter(Boolean);
+	}
+
+	return [];
+}
+
+function normalizeLinks(value: unknown): Record<string, number> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+	const out: Record<string, number> = {};
+
+	for (const [key, raw] of Object.entries(value)) {
+		const n = typeof raw === 'number' ? raw : Number(raw);
+		if (Number.isFinite(n)) out[key.trim()] = n;
+	}
+
+	return out;
+
 }

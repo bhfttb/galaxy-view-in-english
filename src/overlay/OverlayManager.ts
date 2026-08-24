@@ -3,12 +3,16 @@ import { TFile, getAllTags } from 'obsidian';
 import type { GraphData, GraphNode } from '../types';
 import { t } from '../locales';
 import type { AggregateRenderer } from '../render/AggregateRenderer';
+import { C } from 'vitest/dist/chunks/reporters.d.BuRON0I0';
 
 
 
 export interface OverlayCallbacks {
 	openNote: (id: string) => void;
 	focusNode: (index: number) => void;
+	setRouteStart: (index: number) => void;
+	setRouteEnd: (index: number) => void;
+	clearRoute: () => void;
 }
 
 /**
@@ -61,7 +65,7 @@ export class OverlayManager {
 			.slice(0, this.hubBudget)
 			.map(([index, n]) => ({
 				index,
-				el: this.root.createDiv({ cls: 'gx-label gx-label-hub', text: n.name }),
+				el: this.root.createDiv({ cls: 'gx-label gx-label-hub', text: displayName(n) }),
 			}));
 		// 数据重建后旧索引失效，清掉依赖索引的状态
 		this.setHover(-1);
@@ -76,7 +80,7 @@ export class OverlayManager {
 		}
 		const node = this.data.nodes[index];
 		if (!node) return;
-		this.hoverEl.setText(node.name);
+		this.hoverEl.setText(displayName(node));
 		this.hoverEl.show();
 	}
 
@@ -109,10 +113,18 @@ export class OverlayManager {
 			.filter((i) => i !== index)
 			.sort((a, b) => (this.data.nodes[b]?.degree ?? 0) - (this.data.nodes[a]?.degree ?? 0))
 			.slice(0, this.neighborBudget);
-		this.neighborEls = byDegree.map((i) => ({
-			index: i,
-			el: this.root.createDiv({ cls: 'gx-label gx-label-neighbor', text: this.data.nodes[i]?.name ?? '' }),
-		}));
+
+		this.neighborEls = byDegree.map((i) => {
+			const neighborNode = this.data.nodes[i];
+
+			return {
+				index: i,
+				el: this.root.createDiv({
+					cls: 'gx-label gel-label-neighbor',
+					text: neighborNode ? displayName(neighborNode) : '',
+				}),
+			};
+		});
 		const node = this.data.nodes[index];
 		if (node) {
 			if (this.mobileCard) {
@@ -128,7 +140,7 @@ export class OverlayManager {
 		this.card.empty();
 		this.card.show();
 
-		this.card.createDiv({ cls: 'gx-card-title', text: node.name });
+		this.card.createDiv({ cls: 'gx-card-title', text: displayName(node) });
 		const meta = this.card.createDiv({ cls: 'gx-card-meta' });
 		const dot = meta.createSpan({ cls: 'gx-card-dot' });
 		dot.style.background = this.renderer.nodeColorHex(index);
@@ -170,6 +182,23 @@ export class OverlayManager {
 		}
 		const focusBtn = actions.createEl('button', { text: t('focus') });
 		focusBtn.addEventListener('click', () => this.cb.focusNode(index));
+
+		const startBtn = actions.createEl('button', { text: 'Set Origin' });
+		startBtn.addEventListener('click', () => this.cb.setRouteStart(index));
+
+		const endBtn = actions.createEl('button', { text: 'Set Destination' });
+		endBtn.addEventListener('click', () => this.cb.setRouteEnd(index));
+
+		const clearRouteBtn = actions.createEl('button', {
+		text: 'Clear Route',
+		cls: 'gx-route-clear',
+});
+
+	clearRouteBtn.addEventListener('click', () => this.cb.clearRoute());
+
+
+
+
 	}
 
 	/** 每帧：投影所有被追踪节点，translate3d 定位（GPU 合成，无重排） */
@@ -212,6 +241,37 @@ export class OverlayManager {
 		this.hubEls = [];
 		this.neighborEls = [];
 	}
+}
+
+function displayName(node: GraphNode): string {
+	const securityIcons: Record<string, string> = {
+		secure: '🛡️',
+		threatened: '⚠️',
+		embattled: '⚔️',
+		disrupted: '🌀',
+	};
+	
+	const security = typeof node.security === 'string' ? node.security.trim().toLowerCase() : undefined;
+	const icon = security ? securityIcons[security] : undefined;
+
+	const fleetIcons: Record<string, string> = {
+		destroyer: '⬧',
+		cruiser: '⬢',
+		battleship: '⮝',
+		supercapital: '⯌',
+	};
+
+	const fleetText = Array.isArray(node.fleets)
+		? node.fleets
+			.map((f) => fleetIcons[f.trim().toLowerCase()] ?? '')
+			.filter(Boolean)
+			.join(' ')
+		: '';
+
+	const prefix = [icon].filter(Boolean).join(' ');
+	const suffix = [fleetText].filter(Boolean).join(' ');
+
+	return `${prefix ? `${prefix} ` : ''}${node.name}${suffix ? ` ${suffix}` : ''}`;
 }
 
 function stripMarkdown(text: string): string {

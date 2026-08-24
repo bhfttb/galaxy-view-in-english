@@ -22,6 +22,7 @@ import { collectFrames, observeLongTasks, writeBenchResult, sleep } from '../ben
 import type { QualityTier } from '../quality/tiers';
 import { TIERS } from '../quality/tiers';
 import { t } from '../locales';
+import { findShortestPath } from '../data/findShortestPath';
 
 const WARM_CACHE_MIN_COVERAGE = 0.8;
 const ESTABLISHING_MS = 3200;
@@ -45,6 +46,10 @@ export class GraphController {
 	private benchMode = false;
 	private benchRunning = false;
 	private selected = -1;
+
+	private routeStartIndex: number | null = null;
+	private routeEndIndex: number | null = null;
+
 	private graphRadius = 200;
 	private wasSettled = false;
 	private shot: { t0: number; durMs: number; fromBloom: number } | null = null;
@@ -100,9 +105,30 @@ export class GraphController {
 		});
 
 		this.overlay = new OverlayManager(this.contentEl, this.app, renderer, {
-			openNote: (id) => void this.app.workspace.openLinkText(id, '', true),
-			focusNode: (i) => this.selectNode(i, true),
-		});
+	openNote: (id) => void this.app.workspace.openLinkText(id, '', true),
+	focusNode: (i) => this.selectNode(i, true),
+
+	setRouteStart: (i) => {
+		this.routeStartIndex = i;
+
+		const node = this.store.data.nodes[i];
+		console.log('[GalaxyView] Route origin:', node?.name ?? i);
+		this.updateRoute();
+	},
+
+	setRouteEnd: (i) => {
+	this.routeEndIndex = i;
+	const node = this.store.data.nodes[i];
+	console.log('[GalaxyView] Route destination:', node?.name ?? i);
+	this.updateRoute();
+},
+
+clearRoute: () => {
+	this.routeStartIndex = null;
+	this.routeEndIndex = null;
+	console.log('[GalaxyView] Route cleared');
+},
+});
 		this.overlay.setData(this.store.data, this.graphRadius);
 
 		this.applySettings();
@@ -403,6 +429,41 @@ export class GraphController {
 		this.saveSoon();
 		if (notify) new Notice(t('imported_colors_count', { count: groups.length }));
 	}
+
+private updateRoute(): void {
+	if (this.routeStartIndex === null || this.routeEndIndex === null) return;
+
+	const startNode = this.store.data.nodes[this.routeStartIndex];
+	const endNode = this.store.data.nodes[this.routeEndIndex];
+
+	if (!startNode || !endNode) return;
+
+	const route = findShortestPath(
+		this.store.data,
+		startNode.id,
+		endNode.id,
+	);
+
+	if (!route) {
+		new Notice(`No route found from ${startNode.name} to ${endNode.name}.`);
+		return;
+	}
+
+	const names = route.path
+		.map((id) => this.store.data.nodes.find((n) => n.id === id)?.name)
+		.filter((name): name is string => name !== undefined);
+
+	new Notice(
+		`${startNode.name} → ${endNode.name}\n` +
+		`${route.totalDistance.toFixed(1)} ly · ${Math.max(names.length - 1, 0)} jumps`
+	);
+
+	console.log('[GalaxyView] Route:', {
+		path: names,
+		totalDistance: route.totalDistance,
+		jumps: Math.max(names.length - 1, 0),
+	});
+}
 
 	// ---------- 选中 / 聚焦 / 搜索 ----------
 

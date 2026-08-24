@@ -506,3 +506,26 @@
 	color: #e8ecf6;
 	cursor: pointer;
 }
+
+.gx-fleet-icon {
+	width: 14px;
+	height: 14px;
+	margin-left: 4px;
+	vertical-align: middle;
+	object-fit: contain;
+}
+
+.gx-card-actions {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 6px;
+}
+
+.gx-card-actions button {
+	min-width: 0;
+	width: 100%;
+}
+
+.gx-route-clear {
+	grid-column: 1 / -1;
+}
