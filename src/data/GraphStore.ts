@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import { Component, debounce } from 'obsidian';
-import type { GraphData } from '../types';
+import type { GraphData, NamedShip } from '../types';
 import { buildGraph } from './buildGraph';
 import { seedPosition, seedRadius } from './seed';
 import { normalize } from 'path';
@@ -85,7 +85,8 @@ export class GraphStore extends Component {
 				size: f.stat.size,
 				owner: cache?.frontmatter?.owner,
 				security: cache?.frontmatter?.security,
-				fleets: normalizeStringList(cache?.frontmatter?.fleets),
+				fleets: normalizeFleetCounts(cache?.frontmatter?.fleets),
+				namedShips: normalizeNamedShips(cache?.frontmatter?.namedShips),
 				links: normalizeLinks(cache?.frontmatter?.links),
 			};
 		});
@@ -147,24 +148,34 @@ export class GraphStore extends Component {
 	}
 	}
 }
+function normalizeNamedShips(value: unknown): NamedShip[] {
+	if (!Array.isArray(value)) return [];
 
-function normalizeStringList(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value
-			.filter((x): x is string => typeof x === 'string')
-			
-			.filter(Boolean);
+	const ships: NamedShip[] = [];
+
+	for (const item of value) {
+		if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+
+		const record = item as Record<string, unknown>;
+
+		const name =
+			typeof record.name === 'string'
+				? record.name.trim()
+				: '';
+
+		const type =
+			typeof record.type === 'string'
+				? record.type.trim().toLowerCase()
+				: '';
+
+		if (name && type) {
+			ships.push({ name, type });
+		}
 	}
 
-	if (typeof value === 'string') {
-		return value
-			.split(',')
-			.map((x) => x.trim())
-			.filter(Boolean);
-	}
-
-	return [];
+	return ships;
 }
+
 
 function normalizeLinks(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -178,4 +189,23 @@ function normalizeLinks(value: unknown): Record<string, number> {
 
 	return out;
 
+
+}
+function normalizeFleetCounts(value: unknown): Record<string, number> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+	const out: Record<string, number> = {};
+
+	for (const [rawKey, rawValue] of Object.entries(value)) {
+		const key = rawKey.trim().toUpperCase();
+		const count = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+
+		if (!key) continue;
+		if (!Number.isFinite(count)) continue;
+		if (count <= 0) continue;
+
+		out[key] = Math.floor(count);
+	}
+
+	return out;
 }

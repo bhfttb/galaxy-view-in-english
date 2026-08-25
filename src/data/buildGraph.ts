@@ -1,5 +1,4 @@
-import type { GraphData, GraphLink, GraphNode } from '../types';
-import { findShortestPath } from './findShortestPath';
+import type { GraphData, GraphLink, GraphNode, NamedShip } from '../types';
 
 /** 输入用纯记录，不依赖 obsidian —— 可单测（设计要求） */
 export interface FileRecord {
@@ -8,7 +7,8 @@ export interface FileRecord {
 	size?: number; // 字节
 	owner?: string;
 	security?: string;
-	fleets?: string[];
+	fleets?: Record<string, number>;
+	namedShips?: NamedShip[];
 	links?: Record<string, number>;
 }
 
@@ -59,6 +59,7 @@ export function buildGraph(
 			owner: f.owner,
 			security: f.security,
 			fleets: f.fleets,
+			namedShips: f.namedShips,
 		});
 	}
 

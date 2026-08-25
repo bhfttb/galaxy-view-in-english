@@ -529,3 +529,49 @@
 .gx-route-clear {
 	grid-column: 1 / -1;
 }
+
+.gx-card-ship {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 3px 0;
+}
+
+.gx-card-ship-name {
+	font-weight: 600;
+}
+
+.gx-card-ship-type {
+	font-size: 0.8em;
+	opacity: 0.65;
+	text-transform: capitalize;
+}
+
+.gx-card-ships-title {
+	margin-bottom: 4px;
+	font-size: 0.75em;
+	font-weight: 600;
+	opacity: 0.7;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.gx-card-fleet-summary {
+	font-size: 0.9em;
+	opacity: 0.9;
+}
+
+.gx-card-fleets-title {
+	margin-bottom: 4px;
+	font-size: 0.75em;
+	font-weight: 600;
+	opacity: 0.7;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.gx-card-fleets {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.12);
+}

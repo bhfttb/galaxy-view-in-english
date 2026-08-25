@@ -1,10 +1,7 @@
 import type { App } from 'obsidian';
-import { TFile, getAllTags } from 'obsidian';
 import type { GraphData, GraphNode } from '../types';
 import { t } from '../locales';
 import type { AggregateRenderer } from '../render/AggregateRenderer';
-import { C } from 'vitest/dist/chunks/reporters.d.BuRON0I0';
-
 
 
 export interface OverlayCallbacks {
@@ -141,40 +138,50 @@ export class OverlayManager {
 		this.card.show();
 
 		this.card.createDiv({ cls: 'gx-card-title', text: displayName(node) });
-		const meta = this.card.createDiv({ cls: 'gx-card-meta' });
-		const dot = meta.createSpan({ cls: 'gx-card-dot' });
-		dot.style.background = this.renderer.nodeColorHex(index);
-		meta.createSpan({
-			text: node.unresolved ? t('unresolved_link_exists') : node.id.includes('/') ? node.id.slice(0, node.id.lastIndexOf('/')) : t('root_directory'),
+		
+			if (node.namedShips && node.namedShips.length > 0) {
+	const ships = this.card.createDiv({ cls: 'gx-card-ships' });
+
+	ships.createDiv({
+		cls: 'gx-card-ships-title',
+		text: 'Notable Vessels in System:',
+	});
+
+	for (const ship of node.namedShips) {
+		const row = ships.createDiv({ cls: 'gx-card-ship' });
+
+		row.createDiv({
+			cls: 'gx-card-ship-name',
+			text: ship.name,
 		});
 
-		const file = node.unresolved ? null : this.app.vault.getAbstractFileByPath(node.id);
-		const tfile = file instanceof TFile ? file : null;
+		row.createDiv({
+			cls: 'gx-card-ship-type',
+			text: ship.type,
+		});
+	}
+}
+if (node.fleets && Object.keys(node.fleets).length > 0) {
+	const fleets = this.card.createDiv({ cls: 'gx-card-fleets' });
 
-		if (tfile) {
-			const cache = this.app.metadataCache.getFileCache(tfile);
-			const tags = cache ? (getAllTags(cache) ?? []) : [];
-			if (tags.length > 0) {
-				const tagRow = this.card.createDiv({ cls: 'gx-card-tags' });
-				for (const t of tags.slice(0, 5)) tagRow.createSpan({ cls: 'gx-card-tag', text: t });
-			}
-		}
+	fleets.createDiv({
+		cls: 'gx-card-fleets-title',
+		text: 'Other Vessels in System:',
+	});
 
-		const stats = this.card.createDiv({ cls: 'gx-card-stats' });
-		stats.setText(
-			t('link_metrics', { inDegree: node.inDegree, outDegree: node.outDegree }) +
-				(tfile ? t('modified_date', { date: new Date(tfile.stat.mtime).toLocaleDateString() }) : ''),
-		);
+	const fleetText = Object.entries(node.fleets)
+		.filter(([, count]) => count > 0)
+		.map(([type, count]) => `${type} ×${count}`)
+		.join(', ');
 
-		if (tfile) {
-			const snippetEl = this.card.createDiv({ cls: 'gx-card-snippet', text: '…' });
-			const token = ++this.snippetToken;
-			void this.app.vault.cachedRead(tfile).then((text) => {
-				if (token !== this.snippetToken) return; // 已切换选中，丢弃过期结果
-				snippetEl.setText(stripMarkdown(text).slice(0, 120) || t('empty_note'));
-			});
-		}
+	fleets.createDiv({
+		cls: 'gx-card-fleet-summary',
+		text: fleetText,
+	});
+}
 
+
+		
 		const actions = this.card.createDiv({ cls: 'gx-card-actions' });
 		if (!node.unresolved) {
 			const openBtn = actions.createEl('button', { text: t('open_note') });
@@ -274,12 +281,3 @@ function displayName(node: GraphNode): string {
 	return `${prefix ? `${prefix} ` : ''}${node.name}${suffix ? ` ${suffix}` : ''}`;
 }
 
-function stripMarkdown(text: string): string {
-	return text
-		.replace(/^---\n[\s\S]*?\n---\n?/, '') // frontmatter
-		.replace(/!?\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, '$1')
-		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-		.replace(/[#*`>~_]|---/g, '')
-		.replace(/\s+/g, ' ')
-		.trim();
-}

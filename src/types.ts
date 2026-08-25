@@ -1,3 +1,10 @@
+
+export interface NamedShip {
+	name: string;
+	type: string;
+}
+
+
 export interface GraphNode {
 	id: string; // vault path；未解析为 "unresolved:<名字>"
 	name: string;
@@ -9,7 +16,8 @@ export interface GraphNode {
 	unresolved: boolean;
 	owner?: string;
 	security?: string;
-	fleets?: string[];
+	fleets?: Record<string, number>;
+	namedShips?: NamedShip[];
 	links?: Record<string, number>;
 }
 
