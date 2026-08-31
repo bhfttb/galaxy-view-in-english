@@ -23,9 +23,43 @@ import type { QualityTier } from '../quality/tiers';
 import { TIERS } from '../quality/tiers';
 import { t } from '../locales';
 import { findShortestPath } from '../data/findShortestPath';
+import {
+	getActiveCurrentsForGraph,
+	getActiveStormsForGraph,
+	plDateToDay,
+} from '../data/hyperspaceWeather';
 
 const WARM_CACHE_MIN_COVERAGE = 0.8;
 const ESTABLISHING_MS = 3200;
+
+const SPACEWAZE_REFERENCE_SPEED_C = 10_000;
+const HOURS_PER_YEAR = 8760;
+
+function calculateTravelTimeHours(
+	distanceLy: number,
+	speedC = SPACEWAZE_REFERENCE_SPEED_C,
+): number {
+	return (distanceLy * HOURS_PER_YEAR) / speedC;
+}
+
+function formatTravelTime(hours: number): string {
+	const totalMinutes = Math.round(hours * 60);
+
+	const days = Math.floor(totalMinutes / 1440);
+	const remainingMinutes = totalMinutes % 1440;
+
+	const wholeHours = Math.floor(remainingMinutes / 60);
+	const minutes = remainingMinutes % 60;
+
+	const parts: string[] = [];
+
+	if (days > 0) parts.push(`${days}d`);
+	if (wholeHours > 0) parts.push(`${wholeHours}h`);
+	if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+
+	return parts.join(' ');
+}
+
 
 /**
  * 唯一的组装点：Store → Layout → Renderer → Director → Overlay → Panel。
@@ -49,7 +83,12 @@ export class GraphController {
 
 	private routeStartIndex: number | null = null;
 	private routeEndIndex: number | null = null;
-
+	private weatherDay = plDateToDay({
+		year: 499,
+		month: 1,
+		day: 1,
+	})
+	private shipSpeedC = SPACEWAZE_REFERENCE_SPEED_C;
 	private graphRadius = 200;
 	private wasSettled = false;
 	private shot: { t0: number; durMs: number; fromBloom: number } | null = null;
@@ -85,6 +124,15 @@ export class GraphController {
 		this.store.init(this.settings.showUnresolved, this.settings.showOrphans, () => this.onDataChanged());
 		this.store.rebuild(false);
 
+const activeCurrents = getActiveCurrentsForGraph(
+	this.store.data,
+	this.weatherDay,
+);
+
+const activeStorms = getActiveStormsForGraph(
+	this.store.data,
+	this.weatherDay,
+);
 		// 暖启动：用上次沉降坐标覆盖种子 → 重开即成形
 		const coverage = this.applyPositionCache();
 		const warm = coverage >= WARM_CACHE_MIN_COVERAGE;
@@ -97,6 +145,8 @@ export class GraphController {
 			this.settings.colorGroups.length > 0 ? makeNodeColorFn(this.settings.colorGroups) : fallbackColorFn,
 		);
 		renderer.setData(this.store.data, this.store.positions);
+		renderer.setHyperspaceCurrents(activeCurrents);
+		renderer.setHyperspaceStorms(activeStorms);
 		this.initLayout(warm ? 0.06 : 1);
 
 		this.director = new CameraDirector(renderer.camera, renderer.renderer.domElement, {
@@ -130,7 +180,8 @@ clearRoute: () => {
 },
 });
 		this.overlay.setData(this.store.data, this.graphRadius);
-
+this.overlay.setHyperspaceCurrents(activeCurrents);
+this.overlay.setHyperspaceStorms(activeStorms);
 		this.applySettings();
 		this.applyPreset();
 		this.applyTier();
@@ -257,15 +308,52 @@ clearRoute: () => {
 	// ---------- 数据 ----------
 
 	private onDataChanged(): void {
-		if (!this.renderer) return;
-		this.clearSelection();
-		this.renderer.setData(this.store.data, this.store.positions);
-		this.overlay?.setData(this.store.data, this.graphRadius);
-		// 身份保持合并已保住旧坐标，低温重热让新节点滑入而不是全图爆炸
-		this.initLayout(0.3);
-		this.wasSettled = false;
-	}
+	if (!this.renderer) return;
 
+	this.clearSelection();
+
+	this.renderer.setData(
+		this.store.data,
+		this.store.positions,
+	);
+
+	this.overlay?.setData(
+		this.store.data,
+		this.graphRadius,
+	);
+
+	this.refreshHyperspaceWeather();
+
+	this.initLayout(0.3);
+	this.wasSettled = false;
+}
+private refreshHyperspaceWeather(): void {
+	const activeCurrents = getActiveCurrentsForGraph(
+		this.store.data,
+		this.weatherDay,
+	);
+
+	const activeStorms = getActiveStormsForGraph(
+		this.store.data,
+		this.weatherDay,
+	);
+
+	this.renderer?.setHyperspaceCurrents(
+		activeCurrents,
+	);
+
+	this.renderer?.setHyperspaceStorms(
+		activeStorms,
+	);
+
+	this.overlay?.setHyperspaceCurrents(
+		activeCurrents,
+	);
+
+	this.overlay?.setHyperspaceStorms(
+		activeStorms,
+	);
+}
 	/** Worker 优先，创建失败（罕见环境）回退主线程实现 */
 	private initLayout(initialAlpha: number): void {
 		const params = toLayoutParams(this.settings.physics);
@@ -453,15 +541,112 @@ private updateRoute(): void {
 		.map((id) => this.store.data.nodes.find((n) => n.id === id)?.name)
 		.filter((name): name is string => name !== undefined);
 
+	const activeCurrents = getActiveCurrentsForGraph(
+		this.store.data,
+		this.weatherDay,
+	);
+const activeStorms = getActiveStormsForGraph(
+	this.store.data,
+	this.weatherDay,
+);
+	let travelTimeHours = 0;
+
+	for (let i = 0; i < route.path.length - 1; i++) {
+		const fromId = route.path[i];
+		const toId = route.path[i + 1];
+
+		if (!fromId || !toId) continue;
+
+		const fromIndex = this.store.data.nodes.findIndex(
+			(node) => node.id === fromId,
+		);
+
+		const toIndex = this.store.data.nodes.findIndex(
+			(node) => node.id === toId,
+		);
+
+		if (fromIndex < 0 || toIndex < 0) continue;
+
+		const linkIndex = this.store.data.links.findIndex(
+			(link) =>
+				(link.source === fromIndex && link.target === toIndex) ||
+				(link.source === toIndex && link.target === fromIndex),
+		);
+
+		if (linkIndex < 0) continue;
+
+		const link = this.store.data.links[linkIndex];
+		if (!link) continue;
+
+		const distanceLy = link.distance ?? 1;
+
+		const activeCurrent = activeCurrents
+	.map((entry) => entry.current)
+	.find(
+		(current) =>
+			(current.originSystemId === fromId &&
+				current.destinationSystemId === toId) ||
+			(current.originSystemId === toId &&
+				current.destinationSystemId === fromId),
+	);
+
+		let currentModifier = 0;
+		let stormModifier = 0;
+
+		if (activeCurrent) {
+			const magnitude = Math.abs(activeCurrent.strength);
+
+			const flowFromId =
+				activeCurrent.strength >= 0
+					? activeCurrent.originSystemId
+					: activeCurrent.destinationSystemId;
+
+			const flowToId =
+				activeCurrent.strength >= 0
+					? activeCurrent.destinationSystemId
+					: activeCurrent.originSystemId;
+
+			if (fromId === flowFromId && toId === flowToId) {
+				currentModifier += magnitude / 7;
+			} else if (fromId === flowToId && toId === flowFromId) {
+				currentModifier -= magnitude / 7;
+			}
+		}
+const stormsOnLane = activeStorms.filter(
+	({ systemIndex }) =>
+		systemIndex === fromIndex ||
+		systemIndex === toIndex,
+);
+
+for (const { storm } of stormsOnLane) {
+	stormModifier -= storm.strength / 2;
+}
+
+const weatherModifier = currentModifier + stormModifier;
+
+		const speedMultiplier =
+			1 + weatherModifier / 100;
+
+		const effectiveSpeedC =
+			this.shipSpeedC * speedMultiplier;
+
+		travelTimeHours += calculateTravelTimeHours(
+			distanceLy,
+			effectiveSpeedC,
+		);
+	}
+
 	new Notice(
 		`${startNode.name} → ${endNode.name}\n` +
-		`${route.totalDistance.toFixed(1)} ly · ${Math.max(names.length - 1, 0)} jumps`
+		`${route.totalDistance.toFixed(1)} ly · ${Math.max(names.length - 1, 0)} jumps\n` +
+		`Travel time at ${this.shipSpeedC.toLocaleString()}c: ${formatTravelTime(travelTimeHours)}`
 	);
 
 	console.log('[GalaxyView] Route:', {
 		path: names,
 		totalDistance: route.totalDistance,
 		jumps: Math.max(names.length - 1, 0),
+		travelTimeHours,
 	});
 }
 
@@ -638,6 +823,41 @@ private updateRoute(): void {
 				this.saveSoon();
 			},
 			onSearch: () => this.openSearch(),
+						onWeatherDate: (year, month, day) => {
+	try {
+		this.weatherDay = plDateToDay({
+			year,
+			month,
+			day,
+		});
+
+		this.refreshHyperspaceWeather();
+
+		new Notice(
+			`Hyperspace weather set to ${month}/${day}/${year}.`,
+		);
+	} catch (error) {
+		new Notice(
+			error instanceof Error
+				? error.message
+				: 'Invalid hyperspace weather date.',
+		);
+	}
+},
+onShipSpeed: (speedC) => {
+	if (!Number.isFinite(speedC) || speedC <= 0) {
+		new Notice('Ship speed must be greater than 0c.');
+		return;
+	}
+
+	this.shipSpeedC = speedC;
+
+	new Notice(
+		`SpaceWaze ship speed set to ${speedC.toLocaleString()}c.`,
+	);
+
+	this.updateRoute();
+},
 			onReset: () => {
 				Object.assign(this.settings.bloom, DEFAULT_SETTINGS.bloom);
 				Object.assign(this.settings.physics, DEFAULT_SETTINGS.physics);

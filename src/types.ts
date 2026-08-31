@@ -4,6 +4,11 @@ export interface NamedShip {
 	type: string;
 }
 
+export interface ImportantStructure {
+	name: string;
+	type: string;
+	location: string;
+}
 
 export interface GraphNode {
 	id: string; // vault path；未解析为 "unresolved:<名字>"
@@ -18,6 +23,7 @@ export interface GraphNode {
 	security?: string;
 	fleets?: Record<string, number>;
 	namedShips?: NamedShip[];
+	bases?: ImportantStructure[];
 	links?: Record<string, number>;
 }
 

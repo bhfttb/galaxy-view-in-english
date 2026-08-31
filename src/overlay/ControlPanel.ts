@@ -26,9 +26,10 @@ export interface ControlPanelCallbacks {
 	onQuality: () => void;
 	onSearch: () => void;
 	onReset: () => void;
+	onWeatherDate: (year: number, month: number, day: number) => void;
+	onShipSpeed: (speedC: number) => void;
 	runScenario: (s: 'S1' | 'S2' | 'S3') => void;
 }
-
 /**
  * 控制面板 v3（G2 反馈：参数多了之后的信息架构）：
  * 常用置顶（搜索/巡航/风格 chips），细调参数收进折叠分区，默认全收 → 面板首屏极简。
@@ -81,6 +82,97 @@ export class ControlPanel {
 		const revealBtn = row1b.createEl('button', { text: t('panel_reveal') });
 		revealBtn.addEventListener('click', cb.onReveal);
 
+		// —— Hyperspace weather date ——
+		const weatherSection = body.createDiv({
+			cls: 'gx-weather-date',
+		});
+
+		weatherSection.createDiv({
+			cls: 'gx-weather-date-title',
+			text: 'Hyperspace Weather',
+		});
+
+		const weatherRow = weatherSection.createDiv({
+			cls: 'gx-weather-date-row',
+		});
+
+		const monthInput = weatherRow.createEl('input', {
+	attr: {
+		type: 'number',
+		placeholder: 'Month',
+		min: '1',
+		max: '12',
+		value: '8',
+	},
+});
+
+const dayInput = weatherRow.createEl('input', {
+	attr: {
+		type: 'number',
+		placeholder: 'Day',
+		min: '1',
+		max: '31',
+		value: '29',
+	},
+});
+
+const yearInput = weatherRow.createEl('input', {
+	attr: {
+		type: 'number',
+		placeholder: 'Year',
+		min: '250',
+		value: '499',
+	},
+});
+		const setWeatherDateBtn = weatherRow.createEl('button', {
+			text: 'Set',
+		});
+
+		setWeatherDateBtn.addEventListener('click', () => {
+			const month = Number(monthInput.value);
+			const day = Number(dayInput.value);
+			const year = Number(yearInput.value);
+
+			cb.onWeatherDate(year, month, day);
+		});
+
+		const spaceWazeSection = body.createDiv({
+	cls: 'gx-spacewaze-speed',
+});
+
+spaceWazeSection.createDiv({
+	cls: 'gx-spacewaze-speed-title',
+	text: 'SpaceWaze',
+});
+
+const speedRow = spaceWazeSection.createDiv({
+	cls: 'gx-spacewaze-speed-row',
+});
+
+speedRow.createSpan({
+	text: 'Ship speed:',
+});
+
+const speedInput = speedRow.createEl('input', {
+	attr: {
+		type: 'number',
+		min: '1',
+		step: '100',
+		value: '10000',
+	},
+});
+
+speedRow.createSpan({
+	text: 'c',
+});
+
+const setSpeedBtn = speedRow.createEl('button', {
+	text: 'Set',
+});
+
+setSpeedBtn.addEventListener('click', () => {
+	cb.onShipSpeed(Number(speedInput.value));
+});
 		const chipRow = body.createDiv({ cls: 'gx-chips' });
 		for (const preset of STYLE_PRESETS) {
 			const chip = chipRow.createEl('button', { cls: 'gx-chip', text: t(`preset_${preset.id}` as any) });

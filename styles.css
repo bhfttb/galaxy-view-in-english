@@ -575,3 +575,136 @@
 	padding-top: 8px;
 	border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
+
+.gx-card-structures {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+.gx-card-structures-title {
+	margin-bottom: 4px;
+	font-size: 0.75em;
+	font-weight: 600;
+	opacity: 0.7;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.gx-card-structure {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 3px 0;
+}
+
+.gx-card-structure-name {
+	font-weight: 600;
+}
+
+.gx-card-structure-meta {
+	font-size: 0.8em;
+	opacity: 0.65;
+}
+.gx-card-currents {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.gx-card-currents-title {
+	margin-bottom: 4px;
+	font-size: 0.75em;
+	font-weight: 600;
+	opacity: 0.7;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.gx-card-current {
+	font-size: 0.9em;
+	opacity: 0.9;
+	padding: 3px 0;
+}
+
+.gx-weather-date {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.gx-weather-date-title {
+	margin-bottom: 4px;
+	font-size: 0.75em;
+	font-weight: 600;
+	opacity: 0.7;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.gx-weather-date-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.gx-weather-date-row input {
+	min-width: 0;
+	width: 56px;
+	padding: 4px 6px;
+	text-align: center;
+}
+
+.gx-weather-date-row input:last-of-type {
+	width: 68px;
+}
+
+.gx-weather-date-row button {
+	flex: 0 0 auto;
+	padding: 4px 10px;
+}
+
+/* SpaceWaze ship-speed control */
+.gx-spacewaze-speed {
+	margin-top: 8px;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+}
+
+.gx-spacewaze-speed-title {
+	margin-bottom: 6px;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.gx-spacewaze-speed-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+}
+
+.gx-spacewaze-speed-row input,
+.gx-spacewaze-speed-row button,
+.gx-spacewaze-speed-row span {
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+}
+
+.gx-spacewaze-speed-row input {
+	width: 70px;
+	min-width: 0;
+	flex: 0 0 70px;
+}
+
+.gx-spacewaze-speed-row span {
+	white-space: nowrap;
+}
+
+.gx-spacewaze-speed-row button {
+	flex: 0 0 auto;
+}

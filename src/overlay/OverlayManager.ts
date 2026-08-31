@@ -2,7 +2,15 @@ import type { App } from 'obsidian';
 import type { GraphData, GraphNode } from '../types';
 import { t } from '../locales';
 import type { AggregateRenderer } from '../render/AggregateRenderer';
+import type {
+	ActiveHyperlaneCurrent,
+	ActiveHyperspaceStorm,
+} from '../data/hyperspaceWeather';
 
+import {
+	classifyCurrentStrength,
+	classifyStormStrength,
+} from '../data/hyperspaceWeather';
 
 export interface OverlayCallbacks {
 	openNote: (id: string) => void;
@@ -30,7 +38,8 @@ export class OverlayManager {
 	private hubBudget = 14;
 	private neighborBudget = 20;
 	private mobileCard = false;
-
+	private activeCurrents: ActiveHyperlaneCurrent[] = [];
+	private activeStorms: ActiveHyperspaceStorm[] = [];
 	constructor(
 		parent: HTMLElement,
 		private app: App,
@@ -69,6 +78,32 @@ export class OverlayManager {
 		this.setSelection(-1, new Set());
 	}
 
+setHyperspaceCurrents(
+	currents: ActiveHyperlaneCurrent[],
+): void {
+	this.activeCurrents = currents;
+
+	if (this.cardIndex >= 0) {
+		const node = this.data.nodes[this.cardIndex];
+
+		if (node) {
+			this.buildCard(node, this.cardIndex);
+		}
+	}
+}
+setHyperspaceStorms(
+	storms: ActiveHyperspaceStorm[],
+): void {
+	this.activeStorms = storms;
+
+	if (this.cardIndex >= 0) {
+		const node = this.data.nodes[this.cardIndex];
+
+		if (node) {
+			this.buildCard(node, this.cardIndex);
+		}
+	}
+}
 	setHover(index: number): void {
 		this.hoverIndex = index;
 		if (index < 0) {
@@ -180,8 +215,115 @@ if (node.fleets && Object.keys(node.fleets).length > 0) {
 	});
 }
 
+if (node.bases && node.bases.length > 0) {
+	const structures = this.card.createDiv({
+		cls: 'gx-card-structures',
+	});
 
-		
+	structures.createDiv({
+		cls: 'gx-card-structures-title',
+		text: 'Important Structures:',
+	});
+
+	for (const structure of node.bases) {
+		const row = structures.createDiv({
+			cls: 'gx-card-structure',
+		});
+
+		row.createDiv({
+			cls: 'gx-card-structure-name',
+			text: structure.name,
+		});
+
+		row.createDiv({
+			cls: 'gx-card-structure-meta',
+			text: `${structure.type} • ${structure.location}`,
+		});
+	}
+}
+	const currentsForSystem = this.activeCurrents
+	.map(({ linkIndex, current }) => {
+		const link = this.data.links[linkIndex];
+
+		if (!link) return null;
+
+		const sourceNode = this.data.nodes[link.source];
+		const targetNode = this.data.nodes[link.target];
+
+		if (!sourceNode || !targetNode) return null;
+
+		if (
+			sourceNode.id !== node.id &&
+			targetNode.id !== node.id
+		) {
+			return null;
+		}
+
+		const fromId =
+			current.strength > 0
+				? current.originSystemId
+				: current.destinationSystemId;
+
+		const toId =
+			current.strength > 0
+				? current.destinationSystemId
+				: current.originSystemId;
+
+		const otherNode =
+			sourceNode.id === node.id
+				? targetNode
+				: sourceNode;
+
+		const strengthClass =
+			classifyCurrentStrength(current.strength);
+
+		if (node.id === toId) {
+			return `${strengthClass} current inbound from ${otherNode.name}`;
+		}
+
+		if (node.id === fromId) {
+			return `${strengthClass} current outbound to ${otherNode.name}`;
+		}
+
+		return null;
+	})
+	.filter((text): text is string => text !== null);
+
+	const stormsForSystem = this.activeStorms
+	.filter(({ systemIndex }) => systemIndex === index)
+	.map(({ storm }) => {
+		const strengthClass =
+			classifyStormStrength(storm.strength);
+
+		if (strengthClass === 'Maelstrom') {
+			return `Maelstrom centered on ${node.name}`;
+		}
+
+		return `${strengthClass} storm centered on ${node.name}`;
+	});
+
+const weatherForSystem = [
+	...currentsForSystem,
+	...stormsForSystem,
+];
+
+if (weatherForSystem.length > 0) {
+	const currents = this.card.createDiv({
+		cls: 'gx-card-currents',
+	});
+
+	currents.createDiv({
+		cls: 'gx-card-currents-title',
+		text: 'Hyperspace Weather:',
+	});
+
+	for (const text of weatherForSystem) {
+		currents.createDiv({
+			cls: 'gx-card-current',
+			text,
+		});
+	}
+}	
 		const actions = this.card.createDiv({ cls: 'gx-card-actions' });
 		if (!node.unresolved) {
 			const openBtn = actions.createEl('button', { text: t('open_note') });

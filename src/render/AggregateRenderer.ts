@@ -21,6 +21,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import type { GraphData } from '../types';
+import type { ActiveHyperlaneCurrent, ActiveHyperspaceStorm, } from '../data/hyperspaceWeather';
 import { BLOOM_DEFAULTS, NODE_BASE_RADIUS, NODE_MAX_RADIUS, STARFIELD_ROTATION_RAD_PER_S } from '../constants';
 import { NODE_FRAGMENT_SHADER, NODE_VERTEX_SHADER } from './shaders';
 import { linkColor, fallbackColorFn } from './palette';
@@ -58,6 +59,14 @@ export class AggregateRenderer {
 	private selGeometry: BufferGeometry | null = null;
 	private selMaterial: LineBasicMaterial | null = null;
 	private selLinkIdx: number[] = [];
+	private currentSegments: LineSegments | null = null;
+	private currentGeometry: BufferGeometry | null = null;
+	private currentMaterial: LineBasicMaterial | null = null;
+	private activeCurrents: ActiveHyperlaneCurrent[] = [];
+	private stormSegments: LineSegments | null = null;
+private stormGeometry: BufferGeometry | null = null;
+private stormMaterial: LineBasicMaterial | null = null;
+private activeStorms: ActiveHyperspaceStorm[] = [];
 	private starfield: Group;
 	private twinkler: Twinkler;
 	twinkleFreq = 0.5;
@@ -185,6 +194,8 @@ export class AggregateRenderer {
 		this.recolor();
 		this.updatePositions();
 		this.setSelectedLinks(this.selLinkIdx); // 数据重建后恢复高亮层
+		this.setHyperspaceCurrents(this.activeCurrents);
+		this.setHyperspaceStorms(this.activeStorms);
 	}
 
 	private sizeMode: 'degree' | 'fileSize' | 'uniform' = 'degree';
@@ -345,10 +356,477 @@ export class AggregateRenderer {
 		}
 		linkAttr.needsUpdate = true;
 		this.updateSelPositions();
+		this.updateCurrentArrowPositions();
+		this.updateStormPositions();
 	}
 
 	// ---------- 聚焦与选中高亮 ----------
 
+// ---------- 超空间洋流 ----------
+
+setHyperspaceCurrents(currents: ActiveHyperlaneCurrent[]): void {
+	this.activeCurrents = currents;
+
+	if (this.currentSegments) {
+		this.scene.remove(this.currentSegments);
+		this.currentGeometry?.dispose();
+		this.currentMaterial?.dispose();
+
+		this.currentSegments = null;
+		this.currentGeometry = null;
+		this.currentMaterial = null;
+	}
+
+	if (currents.length === 0) return;
+
+	// Each arrow consists of:
+	// 1 shaft segment
+	// 2 arrowhead segments
+	const segmentsPerArrow = 3;
+	const verticesPerSegment = 2;
+	const coordsPerVertex = 3;
+
+	const positions = new Float32Array(
+		currents.length *
+			segmentsPerArrow *
+			verticesPerSegment *
+			coordsPerVertex,
+	);
+
+	this.currentGeometry = new BufferGeometry();
+	this.currentGeometry.setAttribute(
+		'position',
+		new BufferAttribute(positions, 3),
+	);
+
+	this.currentMaterial = new LineBasicMaterial({
+		color: new Color('#ffffff'),
+		transparent: true,
+		opacity: 0.9,
+		depthWrite: false,
+		depthTest: false,
+	});
+
+	this.currentSegments = new LineSegments(
+		this.currentGeometry,
+		this.currentMaterial,
+	);
+
+	this.currentSegments.renderOrder = 3;
+	this.currentSegments.frustumCulled = false;
+
+	this.scene.add(this.currentSegments);
+	this.updateCurrentArrowPositions();
+}
+
+private updateCurrentArrowPositions(): void {
+	if (
+		!this.currentGeometry ||
+		this.activeCurrents.length === 0
+	) {
+		return;
+	}
+
+	const attr = this.currentGeometry.getAttribute(
+		'position',
+	) as BufferAttribute;
+
+	const arr = attr.array as Float32Array;
+
+	const source = new Vector3();
+	const target = new Vector3();
+	const midpoint = new Vector3();
+	const flowDirection = new Vector3();
+	const viewDirection = new Vector3();
+	const side = new Vector3();
+	const offsetDirection = new Vector3();
+
+	let o = 0;
+
+	for (const { linkIndex, current } of this.activeCurrents) {
+		const link = this.data.links[linkIndex];
+
+		if (!link) {
+			o += 18;
+			continue;
+		}
+
+		this.nodePosition(link.source, source);
+		this.nodePosition(link.target, target);
+
+		const sourceNode = this.data.nodes[link.source];
+		const targetNode = this.data.nodes[link.target];
+
+		if (!sourceNode || !targetNode) {
+			o += 18;
+			continue;
+		}
+
+		/*
+		 * Determine the actual direction of flow.
+		 *
+		 * Positive strength:
+		 * originSystemId -> destinationSystemId
+		 *
+		 * Negative strength:
+		 * destinationSystemId -> originSystemId
+		 */
+		const canonicalFromId =
+			current.strength > 0
+				? current.originSystemId
+				: current.destinationSystemId;
+
+		const canonicalToId =
+			current.strength > 0
+				? current.destinationSystemId
+				: current.originSystemId;
+
+		let from = source;
+		let to = target;
+
+		if (
+			sourceNode.id === canonicalToId &&
+			targetNode.id === canonicalFromId
+		) {
+			from = target;
+			to = source;
+		}
+
+		midpoint.copy(from).add(to).multiplyScalar(0.5);
+
+		flowDirection
+			.copy(to)
+			.sub(from);
+
+		const laneLength = flowDirection.length();
+
+		if (laneLength <= 0.001) {
+			o += 18;
+			continue;
+		}
+
+		flowDirection.normalize();
+
+		/*
+		 * Build a small offset perpendicular to the lane and roughly
+		 * facing the camera, so the arrow floats just above the line
+		 * instead of disappearing into it.
+		 */
+		viewDirection
+			.copy(this.camera.position)
+			.sub(midpoint)
+			.normalize();
+
+		side
+			.crossVectors(flowDirection, viewDirection)
+			.normalize();
+
+		if (side.lengthSq() < 0.0001) {
+			side.set(0, 1, 0);
+		}
+
+		offsetDirection
+			.crossVectors(side, flowDirection)
+			.normalize();
+
+		const arrowLength = Math.min(
+			Math.max(laneLength * 0.16, 4),
+			18,
+		);
+
+		const headLength = arrowLength * 0.35;
+		const headWidth = arrowLength * 0.22;
+		const offset = arrowLength * 0.32;
+
+		midpoint.addScaledVector(
+			offsetDirection,
+			offset,
+		);
+
+		const tail = midpoint
+			.clone()
+			.addScaledVector(
+				flowDirection,
+				-arrowLength * 0.5,
+			);
+
+		const tip = midpoint
+			.clone()
+			.addScaledVector(
+				flowDirection,
+				arrowLength * 0.5,
+			);
+
+		const headBase = tip
+			.clone()
+			.addScaledVector(
+				flowDirection,
+				-headLength,
+			);
+
+		const headLeft = headBase
+			.clone()
+			.addScaledVector(
+				side,
+				headWidth,
+			);
+
+		const headRight = headBase
+			.clone()
+			.addScaledVector(
+				side,
+				-headWidth,
+			);
+
+		// Shaft
+		arr[o++] = tail.x;
+		arr[o++] = tail.y;
+		arr[o++] = tail.z;
+
+		arr[o++] = tip.x;
+		arr[o++] = tip.y;
+		arr[o++] = tip.z;
+
+		// Left side of arrowhead
+		arr[o++] = tip.x;
+		arr[o++] = tip.y;
+		arr[o++] = tip.z;
+
+		arr[o++] = headLeft.x;
+		arr[o++] = headLeft.y;
+		arr[o++] = headLeft.z;
+
+		// Right side of arrowhead
+		arr[o++] = tip.x;
+		arr[o++] = tip.y;
+		arr[o++] = tip.z;
+
+		arr[o++] = headRight.x;
+		arr[o++] = headRight.y;
+		arr[o++] = headRight.z;
+	}
+
+	attr.needsUpdate = true;
+}
+// ---------- 超空间风暴 ----------
+
+setHyperspaceStorms(storms: ActiveHyperspaceStorm[]): void {
+	this.activeStorms = storms;
+
+	if (this.stormSegments) {
+		this.scene.remove(this.stormSegments);
+		this.stormGeometry?.dispose();
+		this.stormMaterial?.dispose();
+
+		this.stormSegments = null;
+		this.stormGeometry = null;
+		this.stormMaterial = null;
+	}
+
+	if (storms.length === 0) return;
+
+	/*
+	 * Three irregular rings per storm.
+	 * 24 segments per ring gives enough shape to read as turbulent
+	 * without wasting geometry on what is usually only a few systems.
+	 */
+	const ringsPerStorm = 3;
+	const segmentsPerRing = 24;
+	const coordsPerSegment = 6;
+
+	const positions = new Float32Array(
+		storms.length *
+			ringsPerStorm *
+			segmentsPerRing *
+			coordsPerSegment,
+	);
+
+	this.stormGeometry = new BufferGeometry();
+	this.stormGeometry.setAttribute(
+		'position',
+		new BufferAttribute(positions, 3),
+	);
+
+	this.stormMaterial = new LineBasicMaterial({
+		color: new Color('#d9e5ff'),
+		transparent: true,
+		opacity: 0.72,
+		depthWrite: false,
+		depthTest: false,
+	});
+
+	this.stormSegments = new LineSegments(
+		this.stormGeometry,
+		this.stormMaterial,
+	);
+
+	this.stormSegments.renderOrder = 2;
+	this.stormSegments.frustumCulled = false;
+
+	this.scene.add(this.stormSegments);
+	this.updateStormPositions();
+}
+
+private updateStormPositions(): void {
+	if (
+		!this.stormGeometry ||
+		this.activeStorms.length === 0
+	) {
+		return;
+	}
+
+	const attr = this.stormGeometry.getAttribute(
+		'position',
+	) as BufferAttribute;
+
+	const arr = attr.array as Float32Array;
+
+	const center = new Vector3();
+	const cameraDirection = new Vector3();
+	const right = new Vector3();
+	const up = new Vector3();
+
+	const worldUp = new Vector3(0, 1, 0);
+
+	const ringsPerStorm = 3;
+	const segmentsPerRing = 24;
+
+	let o = 0;
+
+	for (const { systemIndex, storm } of this.activeStorms) {
+		const node = this.data.nodes[systemIndex];
+
+		if (!node) {
+			o += ringsPerStorm * segmentsPerRing * 6;
+			continue;
+		}
+
+		this.nodePosition(systemIndex, center);
+
+		/*
+		 * Build a plane facing the camera so the storm remains
+		 * visible regardless of galaxy orientation.
+		 */
+		cameraDirection
+			.copy(this.camera.position)
+			.sub(center)
+			.normalize();
+
+		right.crossVectors(
+			cameraDirection,
+			worldUp,
+		);
+
+		if (right.lengthSq() < 0.0001) {
+			right.set(1, 0, 0);
+		} else {
+			right.normalize();
+		}
+
+		up.crossVectors(
+			right,
+			cameraDirection,
+		).normalize();
+
+		/*
+		 * Strength 1   -> roughly 7 world units
+		 * Strength 50  -> roughly 12
+		 * Strength 100 -> roughly 17
+		 *
+		 * Large enough for Raging/Extreme storms to announce
+		 * themselves without swallowing neighboring systems.
+		 */
+		const baseRadius =
+			7 + storm.strength * 0.10;
+
+		for (let ring = 0; ring < ringsPerStorm; ring++) {
+			const ringRadius =
+				baseRadius * (0.72 + ring * 0.18);
+
+			for (
+				let segment = 0;
+				segment < segmentsPerRing;
+				segment++
+			) {
+				const a1 =
+					(segment / segmentsPerRing) *
+					Math.PI *
+					2;
+
+				const a2 =
+					((segment + 1) / segmentsPerRing) *
+					Math.PI *
+					2;
+
+				/*
+				 * Mild deterministic distortion.
+				 * The rings don't look mechanically perfect,
+				 * but they also don't vibrate every frame.
+				 */
+				const jitter1 =
+					1 +
+					0.07 *
+						Math.sin(
+							segment * 2.7 +
+								ring * 1.9 +
+								storm.strength,
+						);
+
+				const jitter2 =
+					1 +
+					0.07 *
+						Math.sin(
+							(segment + 1) * 2.7 +
+								ring * 1.9 +
+								storm.strength,
+						);
+
+				const r1 = ringRadius * jitter1;
+				const r2 = ringRadius * jitter2;
+
+				const x1 =
+					center.x +
+					right.x * Math.cos(a1) * r1 +
+					up.x * Math.sin(a1) * r1;
+
+				const y1 =
+					center.y +
+					right.y * Math.cos(a1) * r1 +
+					up.y * Math.sin(a1) * r1;
+
+				const z1 =
+					center.z +
+					right.z * Math.cos(a1) * r1 +
+					up.z * Math.sin(a1) * r1;
+
+				const x2 =
+					center.x +
+					right.x * Math.cos(a2) * r2 +
+					up.x * Math.sin(a2) * r2;
+
+				const y2 =
+					center.y +
+					right.y * Math.cos(a2) * r2 +
+					up.y * Math.sin(a2) * r2;
+
+				const z2 =
+					center.z +
+					right.z * Math.cos(a2) * r2 +
+					up.z * Math.sin(a2) * r2;
+
+				arr[o++] = x1;
+				arr[o++] = y1;
+				arr[o++] = z1;
+
+				arr[o++] = x2;
+				arr[o++] = y2;
+				arr[o++] = z2;
+			}
+		}
+	}
+
+	attr.needsUpdate = true;
+}
 	/** 聚焦模式：非邻居淡出（280ms 缓动，CPU 插值 3k floats 可忽略） */
 	setFocus(selected: number, neighbors: Set<number> | null): void {
 		const n = this.data.nodes.length;
@@ -481,6 +959,7 @@ export class AggregateRenderer {
 
 	render(deltaS: number): void {
 		this.starfield.rotation.y += STARFIELD_ROTATION_RAD_PER_S * deltaS;
+		this.updateCurrentArrowPositions();
 		if (this.starfield.visible) this.twinkler.update(deltaS, this.twinkleFreq);
 		if (this.motes?.visible) this.motes.rotation.y -= STARFIELD_ROTATION_RAD_PER_S * 2 * deltaS;
 		if (this.dimAnimating) this.stepDim(deltaS);
@@ -634,6 +1113,25 @@ export class AggregateRenderer {
 			this.selGeometry = null;
 			this.selMaterial = null;
 		}
+
+		if (this.currentSegments) {
+	this.scene.remove(this.currentSegments);
+	this.currentGeometry?.dispose();
+	this.currentMaterial?.dispose();
+
+	this.currentSegments = null;
+	this.currentGeometry = null;
+	this.currentMaterial = null;
+}
+if (this.stormSegments) {
+	this.scene.remove(this.stormSegments);
+	this.stormGeometry?.dispose();
+	this.stormMaterial?.dispose();
+
+	this.stormSegments = null;
+	this.stormGeometry = null;
+	this.stormMaterial = null;
+}
 		this.nodeGeometry?.dispose();
 		this.nodeMaterial?.dispose();
 		this.linkGeometry?.dispose();

@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import { Component, debounce } from 'obsidian';
-import type { GraphData, NamedShip } from '../types';
+import type { GraphData, NamedShip, ImportantStructure } from '../types';
 import { buildGraph } from './buildGraph';
 import { seedPosition, seedRadius } from './seed';
 import { normalize } from 'path';
@@ -79,6 +79,7 @@ export class GraphStore extends Component {
 		.map((f) => {
 			const cache = this.app.metadataCache.getFileCache(f);
 			
+
 			return {
 				path: f.path,
 				basename: f.basename,
@@ -87,6 +88,7 @@ export class GraphStore extends Component {
 				security: cache?.frontmatter?.security,
 				fleets: normalizeFleetCounts(cache?.frontmatter?.fleets),
 				namedShips: normalizeNamedShips(cache?.frontmatter?.namedShips),
+				bases: normalizeImportantStructures(cache?.frontmatter?.bases),
 				links: normalizeLinks(cache?.frontmatter?.links),
 			};
 		});
@@ -96,6 +98,7 @@ export class GraphStore extends Component {
 			nodeCap: this.nodeCap,
 			linkCap: this.linkCap,
 		});
+
 
 		const oldIndexById = new Map<string, number>();
 		if (preservePositions) {
@@ -176,6 +179,43 @@ function normalizeNamedShips(value: unknown): NamedShip[] {
 	return ships;
 }
 
+
+function normalizeImportantStructures(value: unknown): ImportantStructure[] {
+	if (!Array.isArray(value)) return [];
+
+	const structures: ImportantStructure[] = [];
+
+	for (const item of value) {
+		if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+
+		const record = item as Record<string, unknown>;
+
+		const name =
+			typeof record.name === 'string'
+				? record.name.trim()
+				: '';
+
+		const type =
+			typeof record.type === 'string'
+				? record.type.trim()
+				: '';
+
+		const location =
+			typeof record.location === 'string'
+				? record.location.trim()
+				: '';
+
+		if (name && type && location) {
+			structures.push({
+				name,
+				type,
+				location,
+			});
+		}
+	}
+
+	return structures;
+}
 
 function normalizeLinks(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

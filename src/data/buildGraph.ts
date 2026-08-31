@@ -1,4 +1,4 @@
-import type { GraphData, GraphLink, GraphNode, NamedShip } from '../types';
+import type { GraphData, GraphLink, GraphNode, NamedShip, ImportantStructure, } from '../types';
 
 /** 输入用纯记录，不依赖 obsidian —— 可单测（设计要求） */
 export interface FileRecord {
@@ -9,6 +9,7 @@ export interface FileRecord {
 	security?: string;
 	fleets?: Record<string, number>;
 	namedShips?: NamedShip[];
+	bases?: ImportantStructure[];
 	links?: Record<string, number>;
 }
 
@@ -60,6 +61,7 @@ export function buildGraph(
 			security: f.security,
 			fleets: f.fleets,
 			namedShips: f.namedShips,
+			bases: f.bases,
 		});
 	}
 
